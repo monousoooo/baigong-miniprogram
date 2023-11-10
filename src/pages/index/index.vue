@@ -2,14 +2,20 @@
   <view class="content">
     <image class="logo" src="/static/logo.png" />
     <view class="text-area">
-      <text class="title">{{ title }}</text>
+      <text class="title">{{ isLoading }}</text>
     </view>
+    <button @click="execute">请求</button>
   </view>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
-const title = ref('Hello')
+import { useRequest } from "@/composables/useRequest";
+import { ref } from "vue";
+const title = ref("Hello");
+const { data, isLoading, execute } = useRequest<{ name: string }>("/api", {
+  method: "POST",
+});
+data.value?.name;
 </script>
 
 <style>
