@@ -98,17 +98,17 @@ type OverallUseRequestReturn<T, R> =
   | StrictUseRequestReturn<T, R>
   | EasyUseRequestReturn<T, R>;
 
-export function useRequest<T = any, R = RequestResponse, D = any>(
+export function useRequest<T = any, R = RequestResponse>(
   url: string,
   config?: RequestConfig,
   options?: UseRequestOptions
 ): StrictUseRequestReturn<T, R> & Promise<StrictUseRequestReturn<T, R>>;
 
-export function useRequest<T = any, R = RequestResponse, D = any>(
+export function useRequest<T = any, R = RequestResponse>(
   config?: RequestConfig
 ): EasyUseRequestReturn<T, R> & Promise<EasyUseRequestReturn<T, R>>;
 
-export function useRequest<T = any, R = RequestResponse, D = any>(
+export function useRequest<T = any, R = RequestResponse>(
   ...args: any[]
 ): OverallUseRequestReturn<T, R> & Promise<OverallUseRequestReturn<T, R>> {
   const url: string | undefined =
@@ -159,13 +159,14 @@ export function useRequest<T = any, R = RequestResponse, D = any>(
     if (resetOnExecute) data.value = initialData!;
   };
 
-  const waitUntilFinished = () =>
-    new Promise<OverallUseRequestReturn<T, R>>((resolve, reject) => {
-      until(isFinished)
-        .toBe(true)
-        // eslint-disable-next-line ts/no-use-before-define
-        .then(() => (error.value ? reject(error.value) : resolve(result)));
-    });
+  const waitUntilFinished = async () => {
+    await until(isFinished).toBe(true);
+    if (error.value) {
+      throw error.value;
+    } else {
+      return result;
+    }
+  };
 
   const promise = {
     then: (...args) => waitUntilFinished().then(...args),
