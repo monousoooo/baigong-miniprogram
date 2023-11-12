@@ -24,24 +24,16 @@ const httpInterceptor = {
     if (token) {
       options.header.Authorization = token;
     }
-    console.log(options);
   },
 };
 uni.addInterceptor("request", httpInterceptor);
 uni.addInterceptor("uploadFile", httpInterceptor);
 
-type Diff<T extends keyof any, U extends keyof any> = ({ [P in T]: P } & {
-  [P in U]: never;
-} & { [x: string]: never })[T];
-type Overwrite<T, U> = Pick<T, Diff<keyof T, keyof U>> & U;
-
 type RequestConfig = Partial<UniApp.RequestOptions>;
-interface RequestResponse<T>
-  extends Overwrite<UniApp.RequestSuccessCallbackResult, { data: T }> {}
-
+type RequestResponse = UniApp.RequestSuccessCallbackResult;
 type RequestInstance = typeof uni.request;
 
-interface UseRequestReturn<T, R = RequestResponse<T>, _D = any> {
+interface UseRequestReturn<T, R = RequestResponse> {
   response: ShallowRef<R | undefined>;
   data: Ref<T | undefined>;
   isFinished: Ref<boolean>;
@@ -53,18 +45,18 @@ interface UseRequestReturn<T, R = RequestResponse<T>, _D = any> {
   isCanceled: Ref<boolean>;
 }
 
-interface StrictUseRequestReturn<T, R, D> extends UseRequestReturn<T, R, D> {
+interface StrictUseRequestReturn<T, R> extends UseRequestReturn<T, R> {
   execute: (
     url?: string | RequestConfig,
     config?: RequestConfig
-  ) => Promise<StrictUseRequestReturn<T, R, D>>;
+  ) => Promise<StrictUseRequestReturn<T, R>>;
 }
 
-interface EasyUseRequestReturn<T, R, D> extends UseRequestReturn<T, R, D> {
+interface EasyUseRequestReturn<T, R> extends UseRequestReturn<T, R> {
   execute: (
     url: string,
     config?: RequestConfig
-  ) => Promise<EasyUseRequestReturn<T, R, D>>;
+  ) => Promise<EasyUseRequestReturn<T, R>>;
 }
 
 interface UseRequestOptions<T = any> {
@@ -102,24 +94,23 @@ interface UseRequestOptions<T = any> {
   onFinish?: () => void;
 }
 
-type OverallUseRequestReturn<T, R, D> =
-  | StrictUseRequestReturn<T, R, D>
-  | EasyUseRequestReturn<T, R, D>;
+type OverallUseRequestReturn<T, R> =
+  | StrictUseRequestReturn<T, R>
+  | EasyUseRequestReturn<T, R>;
 
-export function useRequest<T = any, R = RequestResponse<T>, D = any>(
+export function useRequest<T = any, R = RequestResponse, D = any>(
   url: string,
   config?: RequestConfig,
   options?: UseRequestOptions
-): StrictUseRequestReturn<T, R, D> & Promise<StrictUseRequestReturn<T, R, D>>;
+): StrictUseRequestReturn<T, R> & Promise<StrictUseRequestReturn<T, R>>;
 
-export function useRequest<T = any, R = RequestResponse<T>, D = any>(
+export function useRequest<T = any, R = RequestResponse, D = any>(
   config?: RequestConfig
-): EasyUseRequestReturn<T, R, D> & Promise<EasyUseRequestReturn<T, R, D>>;
+): EasyUseRequestReturn<T, R> & Promise<EasyUseRequestReturn<T, R>>;
 
-export function useRequest<T = any, R = RequestResponse<T>, D = any>(
+export function useRequest<T = any, R = RequestResponse, D = any>(
   ...args: any[]
-): OverallUseRequestReturn<T, R, D> &
-  Promise<OverallUseRequestReturn<T, R, D>> {
+): OverallUseRequestReturn<T, R> & Promise<OverallUseRequestReturn<T, R>> {
   const url: string | undefined =
     typeof args[0] === "string" ? args[0] : undefined;
   const argsPlaceholder = typeof url === "string" ? 1 : 0;
@@ -143,7 +134,15 @@ export function useRequest<T = any, R = RequestResponse<T>, D = any>(
     options = args[args.length - 1];
   }
 
-  const { initialData, shallow, immediate, resetOnExecute = false } = options;
+  const {
+    initialData,
+    shallow,
+    immediate,
+    resetOnExecute = false,
+    onSuccess,
+    onError,
+    onFinish,
+  } = options;
 
   const response = shallowRef<UniApp.RequestSuccessCallbackResult>();
   const data = (shallow ? shallowRef : ref)<T>(initialData!) as Ref<T>;
@@ -161,7 +160,7 @@ export function useRequest<T = any, R = RequestResponse<T>, D = any>(
   };
 
   const waitUntilFinished = () =>
-    new Promise<OverallUseRequestReturn<T, R, D>>((resolve, reject) => {
+    new Promise<OverallUseRequestReturn<T, R>>((resolve, reject) => {
       until(isFinished)
         .toBe(true)
         // eslint-disable-next-line ts/no-use-before-define
@@ -171,11 +170,11 @@ export function useRequest<T = any, R = RequestResponse<T>, D = any>(
   const promise = {
     then: (...args) => waitUntilFinished().then(...args),
     catch: (...args) => waitUntilFinished().catch(...args),
-  } as Promise<OverallUseRequestReturn<T, R, D>>;
+  } as Promise<OverallUseRequestReturn<T, R>>;
 
   let executeCounter = 0;
 
-  const execute: OverallUseRequestReturn<T, R, D>["execute"] = (
+  const execute: OverallUseRequestReturn<T, R>["execute"] = (
     executeUrl: string | RequestConfig | undefined = url,
     config: RequestConfig = {}
   ) => {
@@ -201,12 +200,14 @@ export function useRequest<T = any, R = RequestResponse<T>, D = any>(
           response.value = res;
           const result = res.data as Response<T>;
           data.value = result.data;
+          onSuccess?.(data.value);
         } else if (res.statusCode === 401) {
         } else {
           uni.showToast({
             icon: "none",
             title: (res.data as Response<T>).msg || "请求错误",
           });
+          onError?.((res.data as Response<T>).msg || "请求错误");
         }
       })
       .catch((e) => {
@@ -215,11 +216,12 @@ export function useRequest<T = any, R = RequestResponse<T>, D = any>(
           icon: "none",
           title: "网络错误",
         });
-        throw new Error(e.errMsg as string | "网络错误");
+        onError?.(e);
       })
       .finally(() => {
         if (currentExecuteCounter === executeCounter) {
           loading(false);
+          onFinish?.();
         }
       });
 
@@ -227,7 +229,7 @@ export function useRequest<T = any, R = RequestResponse<T>, D = any>(
   };
 
   if (immediate && url) {
-    (execute as StrictUseRequestReturn<T, R, D>["execute"])();
+    (execute as StrictUseRequestReturn<T, R>["execute"])();
   }
 
   const result = {
@@ -237,7 +239,7 @@ export function useRequest<T = any, R = RequestResponse<T>, D = any>(
     isFinished,
     isLoading,
     execute,
-  } as OverallUseRequestReturn<T, R, D>;
+  } as OverallUseRequestReturn<T, R>;
 
   return {
     ...result,

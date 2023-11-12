@@ -4,7 +4,7 @@
     <view class="text-area">
       <text class="title">{{ isLoading }}</text>
     </view>
-    <button @click="execute">请求</button>
+    <button @click="execute" :disabled="isLoading">请求</button>
   </view>
 </template>
 
@@ -12,10 +12,17 @@
 import { useRequest } from "@/composables/useRequest";
 import { ref } from "vue";
 const title = ref("Hello");
-const { data, isLoading, execute } = useRequest<{ name: string }>("/api", {
-  method: "POST",
-});
-data.value?.name;
+const { data, isLoading, execute } = useRequest(
+  "/api",
+  {
+    method: "POST",
+  },
+  {
+    onError: (err) => {
+      console.log(err);
+    },
+  }
+);
 </script>
 
 <style>
